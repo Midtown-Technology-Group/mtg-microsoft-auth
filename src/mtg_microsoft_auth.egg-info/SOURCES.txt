@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+src/mtg_microsoft_auth/__init__.py
+src/mtg_microsoft_auth/client.py
+src/mtg_microsoft_auth/models.py
+src/mtg_microsoft_auth/session.py
+src/mtg_microsoft_auth.egg-info/PKG-INFO
+src/mtg_microsoft_auth.egg-info/SOURCES.txt
+src/mtg_microsoft_auth.egg-info/dependency_links.txt
+src/mtg_microsoft_auth.egg-info/requires.txt
+src/mtg_microsoft_auth.egg-info/top_level.txt
+tests/test_auth.py
