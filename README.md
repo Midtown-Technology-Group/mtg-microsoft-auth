@@ -34,3 +34,42 @@ session = GraphAuthSession(config)
 client = GraphClient(session)
 payload = client.get("/me")
 ```
+
+## Scope Bundles
+
+The shared auth library leaves scope choice with the consuming toy. These are the standard delegated bundles we use across the Midtown toy chest:
+
+- Todo default scope: `["Tasks.Read"]`
+- Todo read-write: `["Tasks.Read", "Tasks.ReadWrite"]`
+- Own-mail triage + mutate: `["Mail.ReadWrite"]`
+- Own-mail triage + send: `["Mail.ReadWrite", "Mail.Send"]`
+- Own + shared mail triage + send: `["Mail.ReadWrite", "Mail.Send", "Mail.ReadWrite.Shared", "Mail.Send.Shared"]`
+
+Example for a write-capable mail consumer:
+
+```python
+config = AuthConfig(
+    client_id="00000000-0000-0000-0000-000000000000",
+    tenant_id="11111111-1111-1111-1111-111111111111",
+    scopes=["Mail.ReadWrite", "Mail.Send"],
+    mode=AuthMode.WAM,
+    cache_namespace="mail-agent",
+)
+```
+
+Example for a shared-mail-capable consumer:
+
+```python
+config = AuthConfig(
+    client_id="00000000-0000-0000-0000-000000000000",
+    tenant_id="11111111-1111-1111-1111-111111111111",
+    scopes=[
+        "Mail.ReadWrite",
+        "Mail.Send",
+        "Mail.ReadWrite.Shared",
+        "Mail.Send.Shared",
+    ],
+    mode=AuthMode.WAM,
+    cache_namespace="shared-mail-agent",
+)
+```
