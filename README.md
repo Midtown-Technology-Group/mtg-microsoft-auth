@@ -11,6 +11,10 @@ Windows-first Microsoft Graph auth helpers for Midtown dev toys.
 - Interactive browser and device-code fallbacks
 - Thin authenticated Graph client with retry and pagination helpers
 
+On Windows, the token cache is persisted under `%USERPROFILE%\.config\<cache-namespace>\token_cache.bin`. The Midtown toys now default to a shared cache namespace, `mtg-shared-microsoft-auth`, so WAM sign-in state can be reused across `todo`, `mail-triage`, `file-finder`, and other Graph-backed toys instead of prompting per toy.
+
+The recommended default auth mode for the toys is `wam`. In the shared auth library, `wam` now means broker-first only; browser and device-code fallbacks are reserved for `auto`, `interactive`, or `device-code` modes so a WAM-first tool does not unexpectedly fan out into multiple interactive prompts.
+
 ## Install
 
 ```powershell
@@ -72,4 +76,24 @@ config = AuthConfig(
     mode=AuthMode.WAM,
     cache_namespace="shared-mail-agent",
 )
+```
+
+## Shared Cache
+
+The recommended default cache namespace for Midtown toys is:
+
+```text
+mtg-shared-microsoft-auth
+```
+
+Override it only when you intentionally want isolation:
+
+```powershell
+$env:MTG_AUTH_CACHE_NAMESPACE='my-isolated-cache'
+```
+
+If your Windows broker cache contains multiple Entra accounts, set a shared account hint so silent token reuse prefers the right one before prompting:
+
+```powershell
+$env:MTG_AUTH_ACCOUNT_HINT='thomas@midtowntg.com'
 ```

@@ -9,6 +9,7 @@ from mtg_microsoft_auth.session import GraphAuthSession
 class StubApp:
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.interactive_kwargs: dict | None = None
 
     def get_accounts(self):
         return [{"username": "user@example.com"}]
@@ -19,6 +20,7 @@ class StubApp:
 
     def acquire_token_interactive(self, scopes, **kwargs):
         self.calls.append("interactive")
+        self.interactive_kwargs = kwargs
         return {"access_token": "interactive-token"}
 
     def acquire_token_silent(self, scopes, account):
@@ -87,3 +89,38 @@ def test_windows_cache_path_uses_namespace(monkeypatch):
 
     assert path.name == "token_cache.bin"
     assert "midtown-auth" in str(path)
+
+
+def test_wam_mode_does_not_fall_back_to_browser_or_device(monkeypatch):
+    session = GraphAuthSession(build_config(mode=AuthMode.WAM), app_factory=lambda *_: StubApp())
+    monkeypatch.setattr(session, "_try_azure_cli_token", lambda: None)
+    monkeypatch.setattr(session, "_try_wam_token", lambda: None)
+
+    with pytest.raises(RuntimeError, match="Unable to acquire Microsoft Graph access token"):
+        session.acquire_token()
+
+
+def test_account_hint_prioritizes_matching_cached_account():
+    class HintApp(StubApp):
+        def get_accounts(self):
+            return [
+                {"username": "other@example.com"},
+                {"username": "user@example.com"},
+            ]
+
+        def acquire_token_silent_with_error(self, scopes, account, force_refresh=False):
+            self.calls.append(f"wam:{account['username']}")
+            if account["username"] == "user@example.com":
+                return {"access_token": "hinted-token"}
+            return None
+
+    app = HintApp()
+    session = GraphAuthSession(
+        build_config(mode=AuthMode.WAM, account_hint="user@example.com"),
+        app_factory=lambda *_: app,
+    )
+
+    token = session.acquire_token()
+
+    assert token == "hinted-token"
+    assert app.calls == ["wam:user@example.com"]

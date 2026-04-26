@@ -21,6 +21,7 @@ class AuthConfig(BaseModel):
     scopes: list[str]
     mode: AuthMode = AuthMode.AUTO
     cache_namespace: str = "mtg-microsoft-auth"
+    account_hint: str | None = None
     allow_broker: bool = True
     request_retry_count: int = Field(default=4, ge=0, le=10)
     request_retry_base_seconds: int = Field(default=2, ge=1, le=60)

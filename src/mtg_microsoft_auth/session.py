@@ -60,6 +60,22 @@ class GraphAuthSession:
             return msal_extensions.PersistedTokenCache(persistence), persistence
         return msal.SerializableTokenCache(), None
 
+    def _candidate_accounts(self):
+        accounts = self.app.get_accounts() or []
+        hint = (self.config.account_hint or "").strip().lower()
+        if not hint:
+            return accounts
+
+        hinted = []
+        others = []
+        for account in accounts:
+            username = str(account.get("username", "")).strip().lower()
+            if username == hint:
+                hinted.append(account)
+            else:
+                others.append(account)
+        return hinted + others
+
     def _try_azure_cli_token(self) -> str | None:
         if self.config.mode != AuthMode.AZURE_CLI:
             return None
@@ -91,49 +107,51 @@ class GraphAuthSession:
     def _try_wam_token(self) -> str | None:
         if self.config.mode not in {AuthMode.AUTO, AuthMode.WAM}:
             return None
-        accounts = self.app.get_accounts()
-        if accounts:
+        accounts = self._candidate_accounts()
+        for account in accounts:
             result = self.app.acquire_token_silent_with_error(
                 self.config.scopes,
-                account=accounts[0],
+                account=account,
                 force_refresh=False,
             )
             if result and "access_token" in result:
                 return result["access_token"]
         try:
-            result = self.app.acquire_token_interactive(
-                scopes=self.config.scopes,
-                parent_window_handle=_get_console_window_handle(),
-                timeout=300,
-                prompt="select_account" if not accounts else None,
-            )
+            interactive_kwargs = {
+                "scopes": self.config.scopes,
+                "parent_window_handle": _get_console_window_handle(),
+                "timeout": 300,
+            }
+            if self.config.account_hint:
+                interactive_kwargs["login_hint"] = self.config.account_hint
+            elif not accounts:
+                interactive_kwargs["prompt"] = "select_account"
+            result = self.app.acquire_token_interactive(**interactive_kwargs)
         except Exception as exc:
             logger.warning("WAM auth unavailable: %s", exc)
             return None
         return result.get("access_token")
 
     def _try_interactive_token(self) -> str | None:
-        if self.config.mode not in {AuthMode.AUTO, AuthMode.INTERACTIVE, AuthMode.WAM}:
+        if self.config.mode not in {AuthMode.AUTO, AuthMode.INTERACTIVE}:
             return None
-        accounts = self.app.get_accounts()
-        if accounts:
-            result = self.app.acquire_token_silent(self.config.scopes, account=accounts[0])
+        accounts = self._candidate_accounts()
+        for account in accounts:
+            result = self.app.acquire_token_silent(self.config.scopes, account=account)
             if result and "access_token" in result:
                 return result["access_token"]
         try:
-            result = self.app.acquire_token_interactive(scopes=self.config.scopes, timeout=300)
+            interactive_kwargs = {"scopes": self.config.scopes, "timeout": 300}
+            if self.config.account_hint:
+                interactive_kwargs["login_hint"] = self.config.account_hint
+            result = self.app.acquire_token_interactive(**interactive_kwargs)
         except Exception as exc:
             logger.warning("Interactive auth unavailable: %s", exc)
             return None
         return result.get("access_token")
 
     def _try_device_code_token(self) -> str | None:
-        if self.config.mode not in {
-            AuthMode.AUTO,
-            AuthMode.INTERACTIVE,
-            AuthMode.WAM,
-            AuthMode.DEVICE_CODE,
-        }:
+        if self.config.mode not in {AuthMode.AUTO, AuthMode.DEVICE_CODE}:
             return None
         flow = self.app.initiate_device_flow(scopes=self.config.scopes)
         if "user_code" not in flow:
