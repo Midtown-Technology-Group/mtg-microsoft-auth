@@ -5,7 +5,6 @@ import os
 import platform
 import shutil
 import subprocess
-from pathlib import Path
 
 import msal
 
@@ -28,12 +27,7 @@ def _get_console_window_handle() -> int | None:
         return int(os.environ["WAM_WINDOW_HANDLE"], 0)
 
     if platform.system() == "Windows":
-        try:
-            import ctypes
-
-            return ctypes.windll.kernel32.GetConsoleWindow()
-        except Exception:
-            return None
+        return msal.PublicClientApplication.CONSOLE_WINDOW_HANDLE
     return None
 
 
@@ -56,7 +50,9 @@ class GraphAuthSession:
         if platform.system() == "Windows" and HAS_MSAL_EXTENSIONS:
             cache_path = self.config.cache_path()
             cache_path.parent.mkdir(parents=True, exist_ok=True)
-            persistence = msal_extensions.FilePersistenceWithDataProtection(str(cache_path))
+            persistence = msal_extensions.FilePersistenceWithDataProtection(
+                str(cache_path)
+            )
             return msal_extensions.PersistedTokenCache(persistence), persistence
         return msal.SerializableTokenCache(), None
 
@@ -156,7 +152,7 @@ class GraphAuthSession:
         flow = self.app.initiate_device_flow(scopes=self.config.scopes)
         if "user_code" not in flow:
             return None
-        print(flow["message"])
+        print(flow["message"], flush=True)
         result = self.app.acquire_token_by_device_flow(flow)
         return result.get("access_token")
 
