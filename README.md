@@ -6,7 +6,7 @@ Windows-first Microsoft Graph auth helpers for Midtown dev toys.
 
 - `msal` public client authentication
 - Windows broker runtime for WAM-first sign-in
-- Windows DPAPI-backed token cache via `msal_extensions` when available
+- Windows DPAPI-backed token cache via `msal_extensions`
 - WAM/broker-first login flow on Windows
 - Interactive browser and device-code fallbacks
 - Thin authenticated Graph client with retry and pagination helpers
@@ -96,4 +96,32 @@ If your Windows broker cache contains multiple Entra accounts, set a shared acco
 
 ```powershell
 $env:MTG_AUTH_ACCOUNT_HINT='thomas@midtowntg.com'
+```
+
+## Shared Login
+
+Warm the shared cache once before using the Graph-backed tools:
+
+```powershell
+mtg-auth login --account thomas@midtowntg.com
+```
+
+By default this requests the read-oriented delegated scopes used by the current
+Midtown toys and uses `auto` auth mode so the bootstrap can fall back from WAM
+to another interactive flow when needed. It also defaults to the shared Midtown
+tenant instead of `common`, which keeps device-code auth usable when a fallback
+is needed:
+
+- `User.Read`
+- `Calendars.Read`
+- `Mail.Read`
+- `Mail.ReadBasic`
+- `Chat.Read`
+- `Files.Read`
+- `Tasks.Read`
+
+Override the bundle only when a toy needs a different consent shape:
+
+```powershell
+mtg-auth login --scopes "User.Read,Calendars.Read,Mail.ReadBasic,Tasks.Read"
 ```
