@@ -4,6 +4,7 @@ import pytest
 
 from mtg_microsoft_auth.models import AuthConfig, AuthMode
 from mtg_microsoft_auth.session import GraphAuthSession
+from mtg_microsoft_auth import cli
 
 
 class StubApp:
@@ -124,3 +125,64 @@ def test_account_hint_prioritizes_matching_cached_account():
 
     assert token == "hinted-token"
     assert app.calls == ["wam:user@example.com"]
+
+
+def test_cli_default_scopes_cover_read_only_toys():
+    assert cli.DEFAULT_SCOPES == [
+        "User.Read",
+        "Calendars.Read",
+        "Mail.Read",
+        "Mail.ReadBasic",
+        "Chat.Read",
+        "Files.Read",
+        "Tasks.Read",
+    ]
+
+
+def test_cli_login_wires_shared_config(monkeypatch, capsys):
+    captured = {}
+
+    class StubSession:
+        def __init__(self, config):
+            captured["config"] = config
+
+    class StubClient:
+        def __init__(self, session):
+            captured["session"] = session
+
+        def get(self, path, params=None):
+            captured["path"] = path
+            captured["params"] = params
+            return {"userPrincipalName": "user@example.com"}
+
+    monkeypatch.setattr(cli, "GraphAuthSession", StubSession)
+    monkeypatch.setattr(cli, "GraphClient", StubClient)
+
+    result = cli.main(["login", "--account", "user@example.com"])
+
+    assert result == 0
+    assert captured["config"].client_id == cli.DEFAULT_CLIENT_ID
+    assert captured["config"].tenant_id == cli.DEFAULT_TENANT_ID
+    assert captured["config"].cache_namespace == cli.DEFAULT_CACHE_NAMESPACE
+    assert captured["config"].account_hint == "user@example.com"
+    assert captured["config"].mode == AuthMode.AUTO
+    assert captured["config"].scopes == cli.DEFAULT_SCOPES
+    assert captured["path"] == "/me"
+    assert captured["params"] == {"$select": "displayName,userPrincipalName"}
+    assert "Authenticated user@example.com" in capsys.readouterr().out
+
+
+def test_interactive_mode_passes_console_handle_when_broker_enabled(monkeypatch):
+    app = StubApp()
+    session = GraphAuthSession(
+        build_config(mode=AuthMode.INTERACTIVE, allow_broker=True),
+        app_factory=lambda *_: app,
+    )
+    monkeypatch.setattr(
+        "mtg_microsoft_auth.session._get_console_window_handle", lambda: 123
+    )
+
+    token = session.acquire_token()
+
+    assert token == "interactive-token"
+    assert app.interactive_kwargs["parent_window_handle"] == 123

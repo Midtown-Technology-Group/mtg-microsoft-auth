@@ -138,6 +138,8 @@ class GraphAuthSession:
                 return result["access_token"]
         try:
             interactive_kwargs = {"scopes": self.config.scopes, "timeout": 300}
+            if self.config.allow_broker:
+                interactive_kwargs["parent_window_handle"] = _get_console_window_handle()
             if self.config.account_hint:
                 interactive_kwargs["login_hint"] = self.config.account_hint
             result = self.app.acquire_token_interactive(**interactive_kwargs)
@@ -151,9 +153,19 @@ class GraphAuthSession:
             return None
         flow = self.app.initiate_device_flow(scopes=self.config.scopes)
         if "user_code" not in flow:
+            error = flow.get("error")
+            description = flow.get("error_description")
+            if error or description:
+                logger.warning("Device-code auth unavailable: %s %s", error, description)
             return None
         print(flow["message"], flush=True)
         result = self.app.acquire_token_by_device_flow(flow)
+        if result and "access_token" not in result:
+            logger.warning(
+                "Device-code auth failed: %s %s",
+                result.get("error"),
+                result.get("error_description"),
+            )
         return result.get("access_token")
 
     def acquire_token(self) -> str:
