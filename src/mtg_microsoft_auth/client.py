@@ -37,14 +37,25 @@ class GraphClient:
         response = self._request_with_retry("GET", f"{self.BASE_URL}{path}", params=params)
         return response.json()
 
-    def get_all(self, path: str, params: dict | None = None) -> dict:
+    def get_all(self, path: str, params: dict | None = None, max_items: int | None = None) -> dict:
+        if max_items is not None and max_items < 0:
+            raise ValueError("max_items must be zero or greater")
+        if max_items == 0:
+            return {"value": []}
+
         items = []
         next_url = f"{self.BASE_URL}{path}"
         request_params = params
         while next_url:
             response = self._request_with_retry("GET", next_url, params=request_params)
             payload = response.json()
-            items.extend(payload.get("value", []))
+            rows = payload.get("value", [])
+            if max_items is None:
+                items.extend(rows)
+            else:
+                items.extend(rows[: max_items - len(items)])
+                if len(items) >= max_items:
+                    break
             next_url = payload.get("@odata.nextLink")
             request_params = None
         return {"value": items}
@@ -59,4 +70,3 @@ class GraphClient:
 
     def delete(self, path: str) -> None:
         self._request_with_retry("DELETE", f"{self.BASE_URL}{path}")
-
