@@ -15,6 +15,16 @@ On Windows, the token cache is persisted under `%USERPROFILE%\.config\<cache-nam
 
 The recommended default auth mode for the toys is `wam`. In the shared auth library, `wam` now means broker-first only; browser and device-code fallbacks are reserved for `auto`, `interactive`, or `device-code` modes so a WAM-first tool does not unexpectedly fan out into multiple interactive prompts.
 
+`azure-cli` mode requests the configured Microsoft Graph scopes and concrete
+tenant through Azure CLI, then checks the returned token's audience, client ID,
+tenant, exact delegated scopes, and optional account hint before use. Azure CLI
+uses its own application identity; a toy configured with a different client ID
+will now fail closed. Use `wam` or `interactive` for that toy, or explicitly
+configure the Azure CLI application ID and matching delegated scopes when CLI
+mode is intended. The account hint now limits silent cache candidates to that
+account; if it is absent from cache, interactive sign-in is used where the
+selected mode permits it.
+
 ## Install
 
 ```powershell

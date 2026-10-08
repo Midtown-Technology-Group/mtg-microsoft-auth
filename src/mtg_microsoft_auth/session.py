@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import os
 import platform
@@ -62,15 +64,57 @@ class GraphAuthSession:
         if not hint:
             return accounts
 
-        hinted = []
-        others = []
-        for account in accounts:
-            username = str(account.get("username", "")).strip().lower()
-            if username == hint:
-                hinted.append(account)
-            else:
-                others.append(account)
-        return hinted + others
+        return [
+            account
+            for account in accounts
+            if str(account.get("username", "")).strip().lower() == hint
+        ]
+
+    def _azure_cli_token_matches_config(self, token: str) -> bool:
+        """Reject CLI identities or delegated grants that differ from caller intent."""
+        try:
+            payload = token.split(".")[1]
+            claims = json.loads(
+                base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+            )
+        except (IndexError, ValueError, TypeError):
+            return False
+        if not isinstance(claims, dict):
+            return False
+        if claims.get("aud") not in {
+            "https://graph.microsoft.com",
+            "00000003-0000-0000-c000-000000000000",
+        }:
+            return False
+        if (
+            str(claims.get("azp") or claims.get("appid") or "").lower()
+            != self.config.client_id.lower()
+        ):
+            return False
+        if (
+            self.config.tenant_id not in {"common", "organizations", "consumers"}
+            and str(claims.get("tid") or "").lower() != self.config.tenant_id.lower()
+        ):
+            return False
+        granted = {scope.casefold() for scope in str(claims.get("scp") or "").split()}
+        requested = {
+            scope.rsplit("/", 1)[-1].casefold() for scope in self.config.scopes
+        }
+        if not requested or requested != granted:
+            return False
+        if self.config.account_hint:
+            identity = (
+                claims.get("preferred_username")
+                or claims.get("upn")
+                or claims.get("unique_name")
+                or ""
+            )
+            if (
+                str(identity).strip().casefold()
+                != self.config.account_hint.strip().casefold()
+            ):
+                return False
+        return True
 
     def _try_azure_cli_token(self) -> str | None:
         if self.config.mode != AuthMode.AZURE_CLI:
@@ -78,19 +122,21 @@ class GraphAuthSession:
         az_executable = shutil.which("az.cmd") or shutil.which("az")
         if not az_executable:
             return None
+        scopes = [
+            (
+                scope
+                if scope.startswith("https://graph.microsoft.com/")
+                else f"https://graph.microsoft.com/{scope}"
+            )
+            for scope in self.config.scopes
+        ]
+        command = [az_executable, "account", "get-access-token", "--scope", *scopes]
+        if self.config.tenant_id not in {"common", "organizations", "consumers"}:
+            command.extend(["--tenant", self.config.tenant_id])
+        command.extend(["--query", "accessToken", "-o", "tsv"])
         try:
             result = subprocess.run(
-                [
-                    az_executable,
-                    "account",
-                    "get-access-token",
-                    "--resource-type",
-                    "ms-graph",
-                    "--query",
-                    "accessToken",
-                    "-o",
-                    "tsv",
-                ],
+                command,
                 capture_output=True,
                 text=True,
                 check=True,
@@ -98,6 +144,10 @@ class GraphAuthSession:
         except Exception:
             return None
         token = result.stdout.strip()
+        if token and not self._azure_cli_token_matches_config(token):
+            raise RuntimeError(
+                "Azure CLI token does not match configured Graph identity or scopes"
+            )
         return token or None
 
     def _try_wam_token(self) -> str | None:
@@ -139,7 +189,9 @@ class GraphAuthSession:
         try:
             interactive_kwargs = {"scopes": self.config.scopes, "timeout": 300}
             if self.config.allow_broker:
-                interactive_kwargs["parent_window_handle"] = _get_console_window_handle()
+                interactive_kwargs["parent_window_handle"] = (
+                    _get_console_window_handle()
+                )
             if self.config.account_hint:
                 interactive_kwargs["login_hint"] = self.config.account_hint
             result = self.app.acquire_token_interactive(**interactive_kwargs)
@@ -156,7 +208,9 @@ class GraphAuthSession:
             error = flow.get("error")
             description = flow.get("error_description")
             if error or description:
-                logger.warning("Device-code auth unavailable: %s %s", error, description)
+                logger.warning(
+                    "Device-code auth unavailable: %s %s", error, description
+                )
             return None
         print(flow["message"], flush=True)
         result = self.app.acquire_token_by_device_flow(flow)
