@@ -17,7 +17,9 @@ The recommended default auth mode for the toys is `wam`. In the shared auth libr
 
 `azure-cli` mode requests the configured Microsoft Graph scopes and concrete
 tenant through Azure CLI, then checks the returned token's audience, client ID,
-tenant, exact delegated scopes, and optional account hint before use. Azure CLI
+tenant, exact delegated scopes, and optional account hint before use. Tokens
+whose claims cannot be decoded are rejected in this mode; use `wam` or
+`interactive` when Azure CLI receives an opaque Graph token. Azure CLI
 uses its own application identity; a toy configured with a different client ID
 will now fail closed. Use `wam` or `interactive` for that toy, or explicitly
 configure the Azure CLI application ID and matching delegated scopes when CLI

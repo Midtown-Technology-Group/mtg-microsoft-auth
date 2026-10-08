@@ -199,6 +199,45 @@ def test_azure_cli_requests_configured_tenant_and_scopes(monkeypatch):
 
 
 @pytest.mark.parametrize(
+    "requested_tenant,token_tenant,expected",
+    [
+        ("consumers", "9188040d-6c67-4c5b-b112-36a304b66dad", True),
+        ("consumers", "22222222-2222-2222-2222-222222222222", False),
+        ("organizations", "9188040d-6c67-4c5b-b112-36a304b66dad", False),
+        ("organizations", "22222222-2222-2222-2222-222222222222", True),
+    ],
+)
+def test_azure_cli_tenant_aliases(requested_tenant, token_tenant, expected):
+    auth = GraphAuthSession(
+        build_config(mode=AuthMode.AZURE_CLI, tenant_id=requested_tenant),
+        app_factory=lambda *_: StubApp(),
+    )
+    assert (
+        auth._azure_cli_token_matches_config(synthetic_token(tid=token_tenant))
+        is expected
+    )
+
+
+def test_azure_cli_timeout_returns_no_token(monkeypatch):
+    from mtg_microsoft_auth import session as session_module
+
+    monkeypatch.setattr(session_module.shutil, "which", lambda name: "/synthetic/az")
+
+    def timeout_run(command, **kwargs):
+        assert kwargs["timeout"] == 60
+        raise session_module.subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(session_module.subprocess, "run", timeout_run)
+    auth = GraphAuthSession(
+        build_config(mode=AuthMode.AZURE_CLI), app_factory=lambda *_: StubApp()
+    )
+    with pytest.raises(
+        RuntimeError, match="Unable to acquire Microsoft Graph access token"
+    ):
+        auth.acquire_token()
+
+
+@pytest.mark.parametrize(
     "claim,value",
     [
         ("aud", "https://management.azure.com"),

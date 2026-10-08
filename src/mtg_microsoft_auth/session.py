@@ -22,6 +22,7 @@ except ImportError:  # pragma: no cover - depends on platform extras
 
 
 logger = logging.getLogger(__name__)
+CONSUMER_TENANT_ID = "9188040d-6c67-4c5b-b112-36a304b66dad"
 
 
 def _get_console_window_handle() -> int | None:
@@ -91,9 +92,17 @@ class GraphAuthSession:
             != self.config.client_id.lower()
         ):
             return False
+        tenant = str(claims.get("tid") or "").lower()
+        requested_tenant = self.config.tenant_id.lower()
+        if requested_tenant == "consumers" and tenant != CONSUMER_TENANT_ID:
+            return False
+        if requested_tenant == "organizations" and (
+            not tenant or tenant == CONSUMER_TENANT_ID
+        ):
+            return False
         if (
-            self.config.tenant_id not in {"common", "organizations", "consumers"}
-            and str(claims.get("tid") or "").lower() != self.config.tenant_id.lower()
+            requested_tenant not in {"common", "organizations", "consumers"}
+            and tenant != requested_tenant
         ):
             return False
         granted = {scope.casefold() for scope in str(claims.get("scp") or "").split()}
@@ -140,6 +149,7 @@ class GraphAuthSession:
                 capture_output=True,
                 text=True,
                 check=True,
+                timeout=60,
             )
         except Exception:
             return None
