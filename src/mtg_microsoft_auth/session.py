@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import platform
-import shutil
 import subprocess
 
 import msal
@@ -128,9 +127,13 @@ class GraphAuthSession:
     def _try_azure_cli_token(self) -> str | None:
         if self.config.mode != AuthMode.AZURE_CLI:
             return None
-        az_executable = shutil.which("az.cmd") or shutil.which("az")
-        if not az_executable:
-            return None
+        az_executable = self.config.azure_cli_path
+        if az_executable is None:
+            raise RuntimeError(
+                "Azure CLI mode requires an explicit absolute azure_cli_path"
+            )
+        if not az_executable.is_file():
+            raise RuntimeError(f"Configured Azure CLI does not exist: {az_executable}")
         scopes = [
             (
                 scope
@@ -139,7 +142,13 @@ class GraphAuthSession:
             )
             for scope in self.config.scopes
         ]
-        command = [az_executable, "account", "get-access-token", "--scope", *scopes]
+        command = [
+            str(az_executable),
+            "account",
+            "get-access-token",
+            "--scope",
+            *scopes,
+        ]
         if self.config.tenant_id not in {"common", "organizations", "consumers"}:
             command.extend(["--tenant", self.config.tenant_id])
         command.extend(["--query", "accessToken", "-o", "tsv"])

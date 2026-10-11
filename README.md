@@ -15,9 +15,13 @@ On Windows, the token cache is persisted under `%USERPROFILE%\.config\<cache-nam
 
 The recommended default auth mode for the toys is `wam`. In the shared auth library, `wam` now means broker-first only; browser and device-code fallbacks are reserved for `auto`, `interactive`, or `device-code` modes so a WAM-first tool does not unexpectedly fan out into multiple interactive prompts.
 
-`azure-cli` mode requests the configured Microsoft Graph scopes and concrete
-tenant through Azure CLI, then checks the returned token's audience, client ID,
-tenant, exact delegated scopes, and optional account hint before use. Tokens
+`azure-cli` mode requires an operator-configured absolute path to `az` or
+`az.cmd`; it never searches the ambient `PATH`. Supply `azure_cli_path` in
+`AuthConfig`, `--azure-cli-path` to `mtg-auth login`, or the
+`MTG_AUTH_AZURE_CLI_PATH` environment variable. It requests the configured
+Microsoft Graph scopes and concrete tenant through that executable, then checks
+the returned token's audience, client ID, tenant, exact delegated scopes, and
+optional account hint before use. Tokens
 whose claims cannot be decoded are rejected in this mode; use `wam` or
 `interactive` when Azure CLI receives an opaque Graph token. Azure CLI
 uses its own application identity; a toy configured with a different client ID
