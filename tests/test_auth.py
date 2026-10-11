@@ -322,6 +322,7 @@ def test_cli_default_scopes_cover_read_only_toys():
 
 
 def test_cli_login_wires_shared_config(monkeypatch, capsys):
+    monkeypatch.delenv("MTG_AUTH_AZURE_CLI_PATH", raising=False)
     captured = {}
 
     class StubSession:
