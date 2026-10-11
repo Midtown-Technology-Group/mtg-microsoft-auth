@@ -22,6 +22,7 @@ class AuthConfig(BaseModel):
     mode: AuthMode = AuthMode.AUTO
     cache_namespace: str = "mtg-microsoft-auth"
     account_hint: str | None = None
+    azure_cli_path: Path | None = None
     allow_broker: bool = True
     request_retry_count: int = Field(default=4, ge=0, le=10)
     request_retry_base_seconds: int = Field(default=2, ge=1, le=60)
@@ -34,6 +35,17 @@ class AuthConfig(BaseModel):
         parts = value.split("-")
         if len(parts) != 5 or not all(parts):
             raise ValueError(f"Invalid UUID format: {value}")
+        return value
+
+    @field_validator("azure_cli_path")
+    @classmethod
+    def validate_azure_cli_path(cls, value: Path | None) -> Path | None:
+        if value is None:
+            return None
+        if not value.is_absolute():
+            raise ValueError("Azure CLI path must be absolute")
+        if value.name.casefold() not in {"az", "az.cmd"}:
+            raise ValueError("Azure CLI path must name az or az.cmd")
         return value
 
     def cache_path(self) -> Path:

@@ -67,6 +67,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Authentication mode.",
     )
     login.add_argument(
+        "--azure-cli-path",
+        default=os.environ.get("MTG_AUTH_AZURE_CLI_PATH"),
+        help="Absolute path to the trusted az or az.cmd executable for azure-cli mode.",
+    )
+    login.add_argument(
         "--scopes",
         default=os.environ.get("MTG_AUTH_SCOPES"),
         help="Comma-separated delegated scopes. Defaults to the Midtown toy read bundle.",
@@ -85,6 +90,7 @@ def _login(args: argparse.Namespace) -> int:
         mode=AuthMode(args.mode),
         cache_namespace=args.cache_namespace,
         account_hint=args.account,
+        azure_cli_path=args.azure_cli_path,
         allow_broker=True,
     )
     session = GraphAuthSession(config)

@@ -47,7 +47,9 @@ def build_config(**overrides):
         scopes=["Tasks.Read", "Tasks.ReadWrite"],
         cache_namespace="todo-cli",
     )
-    return base.model_copy(update=overrides)
+    values = base.model_dump()
+    values.update(overrides)
+    return AuthConfig(**values)
 
 
 def synthetic_token(**overrides):
@@ -173,12 +175,13 @@ def test_account_hint_never_uses_other_cached_account():
     assert app.interactive_kwargs["login_hint"] == "user@example.com"
 
 
-def test_azure_cli_requests_configured_tenant_and_scopes(monkeypatch):
+def test_azure_cli_requests_configured_tenant_and_scopes(monkeypatch, tmp_path):
     from mtg_microsoft_auth import session as session_module
 
     token = synthetic_token()
     commands = []
-    monkeypatch.setattr(session_module.shutil, "which", lambda name: "/synthetic/az")
+    executable = tmp_path / "az"
+    executable.touch()
 
     def fake_run(command, **kwargs):
         commands.append(command)
@@ -186,10 +189,15 @@ def test_azure_cli_requests_configured_tenant_and_scopes(monkeypatch):
 
     monkeypatch.setattr(session_module.subprocess, "run", fake_run)
     auth = GraphAuthSession(
-        build_config(mode=AuthMode.AZURE_CLI, account_hint="user@example.com"),
+        build_config(
+            mode=AuthMode.AZURE_CLI,
+            account_hint="user@example.com",
+            azure_cli_path=executable,
+        ),
         app_factory=lambda *_: StubApp(),
     )
     assert auth.acquire_token() == token
+    assert commands[0][0] == str(executable)
     assert commands[0][3:6] == [
         "--scope",
         "https://graph.microsoft.com/Tasks.Read",
@@ -218,10 +226,11 @@ def test_azure_cli_tenant_aliases(requested_tenant, token_tenant, expected):
     )
 
 
-def test_azure_cli_timeout_returns_no_token(monkeypatch):
+def test_azure_cli_timeout_returns_no_token(monkeypatch, tmp_path):
     from mtg_microsoft_auth import session as session_module
 
-    monkeypatch.setattr(session_module.shutil, "which", lambda name: "/synthetic/az")
+    executable = tmp_path / "az"
+    executable.touch()
 
     def timeout_run(command, **kwargs):
         assert kwargs["timeout"] == 60
@@ -229,7 +238,8 @@ def test_azure_cli_timeout_returns_no_token(monkeypatch):
 
     monkeypatch.setattr(session_module.subprocess, "run", timeout_run)
     auth = GraphAuthSession(
-        build_config(mode=AuthMode.AZURE_CLI), app_factory=lambda *_: StubApp()
+        build_config(mode=AuthMode.AZURE_CLI, azure_cli_path=executable),
+        app_factory=lambda *_: StubApp(),
     )
     with pytest.raises(
         RuntimeError, match="Unable to acquire Microsoft Graph access token"
@@ -248,24 +258,55 @@ def test_azure_cli_timeout_returns_no_token(monkeypatch):
         ("preferred_username", "other@example.com"),
     ],
 )
-def test_azure_cli_rejects_mismatched_identity_or_grants(monkeypatch, claim, value):
+def test_azure_cli_rejects_mismatched_identity_or_grants(
+    monkeypatch, tmp_path, claim, value
+):
     from mtg_microsoft_auth import session as session_module
 
     token = synthetic_token(**{claim: value})
-    monkeypatch.setattr(session_module.shutil, "which", lambda name: "/synthetic/az")
+    executable = tmp_path / "az"
+    executable.touch()
     monkeypatch.setattr(
         session_module.subprocess,
         "run",
         lambda *args, **kwargs: SimpleNamespace(stdout=token),
     )
     auth = GraphAuthSession(
-        build_config(mode=AuthMode.AZURE_CLI, account_hint="user@example.com"),
+        build_config(
+            mode=AuthMode.AZURE_CLI,
+            account_hint="user@example.com",
+            azure_cli_path=executable,
+        ),
         app_factory=lambda *_: StubApp(),
     )
     with pytest.raises(
         RuntimeError, match="does not match configured Graph identity or scopes"
     ):
         auth.acquire_token()
+
+
+def test_azure_cli_mode_never_searches_attacker_controlled_path(monkeypatch, tmp_path):
+    attacker_dir = tmp_path / "workspace"
+    attacker_dir.mkdir()
+    (attacker_dir / "az").touch()
+    monkeypatch.setenv("PATH", str(attacker_dir))
+    monkeypatch.chdir(attacker_dir)
+    monkeypatch.setattr(
+        "mtg_microsoft_auth.session.subprocess.run",
+        lambda *args, **kwargs: pytest.fail("ambient Azure CLI was executed"),
+    )
+    auth = GraphAuthSession(
+        build_config(mode=AuthMode.AZURE_CLI), app_factory=lambda *_: StubApp()
+    )
+
+    with pytest.raises(RuntimeError, match="explicit absolute azure_cli_path"):
+        auth.acquire_token()
+
+
+@pytest.mark.parametrize("path", ["az", "tools/az", "../az", "/trusted/not-az"])
+def test_azure_cli_path_rejects_relative_or_unexpected_commands(path):
+    with pytest.raises(ValueError, match="Azure CLI path"):
+        build_config(mode=AuthMode.AZURE_CLI, azure_cli_path=path)
 
 
 def test_cli_default_scopes_cover_read_only_toys():
@@ -306,6 +347,7 @@ def test_cli_login_wires_shared_config(monkeypatch, capsys):
     assert captured["config"].tenant_id == cli.DEFAULT_TENANT_ID
     assert captured["config"].cache_namespace == cli.DEFAULT_CACHE_NAMESPACE
     assert captured["config"].account_hint == "user@example.com"
+    assert captured["config"].azure_cli_path is None
     assert captured["config"].mode == AuthMode.AUTO
     assert captured["config"].scopes == cli.DEFAULT_SCOPES
     assert captured["path"] == "/me"
