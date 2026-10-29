@@ -33,6 +33,12 @@ selected mode permits it.
 
 ## Install
 
+Python 3.10 and newer are supported. `AuthMode` is a string enum on all supported
+versions, with string values preserved in formatting and JSON serialization.
+This compatibility repair adds no dependencies and requires no configuration or
+cache changes. Authentication modes, scopes, account selection, Windows broker
+behavior, and DPAPI cache protection are unchanged.
+
 ```powershell
 python -m pip install -e .[dev]
 ```

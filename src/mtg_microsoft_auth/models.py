@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import os
-from enum import StrEnum
+from enum import Enum
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class AuthMode(StrEnum):
+class AuthMode(str, Enum):
+    # Match StrEnum's string conversion on every supported Python version.
+    __str__ = str.__str__
+    __format__ = str.__format__
+
     AUTO = "auto"
     AZURE_CLI = "azure-cli"
     WAM = "wam"
