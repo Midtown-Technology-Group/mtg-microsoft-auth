@@ -9,3 +9,15 @@ Preserve Windows WAM/broker-first behavior and DPAPI-backed persisted cache prot
 Scope selection belongs to consuming tools; authentication success does not authorize mail, task, or file mutations. Do not silently widen scopes, switch accounts/tenants, or change consent requirements. Preserve the shared `mtg-shared-microsoft-auth` cache namespace default and intentional isolation overrides. Account hints should select the intended account before interactive prompting, not expose account details in diagnostics.
 
 Never print tokens, decrypted cache contents, authorization headers, or sensitive Graph payloads. Do not delete or migrate an operator's shared cache as a troubleshooting shortcut. Changes to authentication defaults affect multiple toys: document compatibility, platform behavior, account selection, and any required operator action. Report unit-test evidence separately from explicitly authorized live authentication checks.
+
+## Secret gate before publication
+
+Before publishing the current PR branch, commit the complete candidate and run
+`python3 scripts/secret_gate.py` (native Windows: `python`). Require exit 0;
+missing tooling/authentication, scan errors and skipped scans block publication.
+Then run the existing repository gates. Repeat after changing outgoing commits.
+Push exactly the scanned HEAD. This PR scan covers the current branch against its
+fetched intended base; other refs, multi-ref pushes and rewritten history require
+`--pre-push` with Git's complete ref-update stream. Stop if any pushed ref is
+uncovered. See [secret scanning](SECRET-SCANNING.md) for base selection, new branches,
+pre-push input and prerequisites. Preserve GitGuardian App, CI and Gitleaks checks.
